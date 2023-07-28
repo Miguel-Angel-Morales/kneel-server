@@ -1,26 +1,35 @@
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from Views import get_all_metals, get_single_metal, create_metal, delete_metal, update_metal
-from Views import get_all_orders, get_single_order, create_order, delete_order, update_order
-from Views import get_all_sizes, get_single_size, create_size, delete_size, update_size
-from Views import get_all_styles, get_single_style, create_style, delete_style, update_style
+from urllib.parse import urlparse, parse_qs
+from views import get_all_metals, get_single_metal, create_metal, delete_metal, update_metal
+from views import get_all_orders, get_single_order, create_order, delete_order, update_order
+from views import get_all_sizes, get_single_size, create_size, delete_size, update_size
+from views import get_all_styles, get_single_style, create_style, delete_style, update_style
 
 
 class HandleRequests(BaseHTTPRequestHandler):
     def parse_url(self, path):
-
-        path_params = path.split("/")
+        parsed_url = urlparse(path)
+        path_params = parsed_url.path.split('/')
         resource = path_params[1]
-        id = None
 
+        if parsed_url.query:
+            query = parse_qs(parsed_url.query)
+            return (resource, query)
+
+        pk = None
         try:
-            id = int(path_params[2])
-        except IndexError:
-            pass
-        except ValueError:
+            pk = int(path_params[2])
+        except (IndexError, ValueError):
             pass
 
-        return (resource, id)
+        return (resource, pk)
+
+    def _set_headers(self, status):
+        self.send_response(status)
+        self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
 
     def do_GET(self):
         """Handles GET requests to the server"""
@@ -57,64 +66,73 @@ class HandleRequests(BaseHTTPRequestHandler):
         self._set_headers(201)
         content_len = int(self.headers.get('content-length', 0))
         post_body = self.rfile.read(content_len)
-
-        # Convert JSON string to a Python dictionary
         post_body = json.loads(post_body)
 
-        # Parse the URL
         (resource, id) = self.parse_url(self.path)
 
-        # Initialize new animal
-        new_metal = None
-        new_order = None
-        new_size = None
-        new_style = None
+        new_resource = None
 
-        # Add a new metal to the list. Don't worry about
-        # the orange squiggle, you'll define the create_metal
-        # function next.
         if resource == "metals":
-            new_metal = create_metal(post_body)
-            response = create_metal
+            if "metal" in post_body:
+                new_resource = create_metal(post_body)
+            else:
+                self._set_headers(400)
+                new_resource = {
+                    "message" f'{"metal is required" if "metal" not in post_body else ""}'
+                }
 
         if resource == "orders":
-            new_order = create_order(post_body)
-            response = create_order
+            if "style_id" in post_body and "metal_id" in post_body and "size_id" in post_body:
+                new_resource = create_order(post_body)
+            else:
+                self._set_headers(400)
+                new_resource = {
+                    "message": f'{"style_id is required" if "style_id" not in post_body else ""} {"metal_id is required" if "metal_id" not in post_body else ""} {"size_id is required" if "size_id" not in post_body else ""}'
+                }
 
         if resource == "sizes":
-            new_size = create_size(post_body)
-            response = create_size
+            if "carets" in post_body:
+                new_resource = create_size(post_body)
+            else:
+                self._set_headers(400)
+                new_resource = {
+                    "message": f'{"carets is required" if "carets" not in post_body else ""}'
+                }
 
         if resource == "styles":
-            new_style = create_style(post_body)
-            response = create_style
+            if "style" in post_body:
+                new_resource = create_size(post_body)
+            else:
+                self._set_headers(400)
+                new_resource = { 
+                    "message": f'{"style is required" if "style" not in post_body else ""}'
+                }
 
-        # Encode the new animal and send in response
-        self.wfile.write(json.dumps(response).encode())
+        self.wfile.write(json.dumps(new_resource).encode())
 
     def do_PUT(self):
-        self._set_headers(204)
         content_len = int(self.headers.get('content-length', 0))
         post_body = self.rfile.read(content_len)
         post_body = json.loads(post_body)
 
-        # Parse the URL
         (resource, id) = self.parse_url(self.path)
 
-        # Delete a single animal from the list
+        success = False
+
         if resource == "metals":
-            update_metal(id, post_body)
-
-        if resource == "orders":
+            success = update_metal(id, post_body)
+        elif resource == "orders":
             update_order(id, post_body)
-
-        if resource == "sizes":
+        elif resource == "sizes":
             update_size(id, post_body)
-
-        if resource == "styles":
+        elif resource == "styles":
             update_style(id, post_body)
 
-        # Encode the new animal and send in response
+        if success:
+            self._set_headers(204)
+        else:
+            self._set_headers(404)
+
         self.wfile.write("".encode())
 
     def _set_headers(self, status):
@@ -161,7 +179,7 @@ class HandleRequests(BaseHTTPRequestHandler):
             delete_style(id)
 
         # Encode the new animal and send in response
-        self.wfile.write("".encode())
+        self.wfile.write(json.dumps(resource).encode())
 
 # This function is not inside the class. It is the starting
 # point of this application.

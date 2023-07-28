@@ -1,8 +1,9 @@
 class Order():
-    def __init__(self, style_id, size_id, metal_id, id):
+    def __init__(self, style_id, metal_id, size_id, id):
         self.style_id = style_id
-        self.size_id = size_id
         self.metal_id = metal_id
+        self.size_id = size_id
         self.id = id
-
-new_order = Order(1, 2, 3, 14)
+        self.style = None
+        self.metal = None
+        self.size = None
